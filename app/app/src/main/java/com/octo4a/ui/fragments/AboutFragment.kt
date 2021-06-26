@@ -34,7 +34,7 @@ class AboutFragment : Fragment() {
         }
 
         appProjectButton.setOnClickListener {
-            openWebsite("https://github.com/feelfreelinux/octo4a")
+            openWebsite("https://github.com/codailama/octo4a")
         }
     }
 

@@ -56,7 +56,7 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
             }
 
             try {
-                val bootstrapReleases = githubRepository.getNewestReleases("feelfreelinux/android-linux-bootstrap")
+                val bootstrapReleases = githubRepository.getNewestReleases("codailama/android-linux-bootstrap")
                 val arch = getArchString()
 
                 val release = bootstrapReleases.firstOrNull {
@@ -120,20 +120,32 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
                 }
 
                 runCommand("sh install-bootstrap.sh", prooted = false).waitAndPrintOutput(logger)
-                runCommand("sh add-user.sh octoprint", prooted = false).waitAndPrintOutput(logger)
-                runCommand("cat /etc/motd").waitAndPrintOutput(logger)
+                runCommand("cat /etc/os-release").waitAndPrintOutput(logger)
 
                 // Setup ssh
-                runCommand("apk add openssh-server").waitAndPrintOutput(logger)
+                runCommand("apt update").waitAndPrintOutput(logger)
+                runCommand("DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true " +
+                        "apt-get install --no-install-recommends -y openssh-server gcc-aarch64-linux-gnu build-essential").waitAndPrintOutput(logger)
                 runCommand("echo \"PermitRootLogin yes\" >> /etc/ssh/sshd_config").waitAndPrintOutput(logger)
                 runCommand("ssh-keygen -A").waitAndPrintOutput(logger)
+                runCommand("mkdir -p /var/run/sshd").waitAndPrintOutput(logger)
+                runCommand("chmod 700 /var/run/sshd").waitAndPrintOutput(logger)
 
                 // Turn ssh on for easier debug
-                if (BuildConfig.DEBUG) {
-//                    runCommand("passwd").setPassword("octoprint")
-//                    runCommand("passwd octoprint").setPassword("octoprint")
-//                    runCommand("/usr/sbin/sshd -p 2137")
-                }
+                //runCommand("useradd -m -d /home/octoprint -s /bin/bash  octoprint").waitAndPrintOutput(logger)
+                runCommand("sh add-user.sh octoprint", prooted = false).waitAndPrintOutput(logger)
+                runCommand("chmod -R a+rwX,o-w /home/octoprint").waitAndPrintOutput(logger)
+                runCommand("chown -R octoprint:octoprint /home/octoprint").waitAndPrintOutput(logger)
+                runCommand("passwd").setPassword("octoprint")
+                runCommand("passwd octoprint").setPassword("octoprint")
+                runCommand("/usr/sbin/sshd -p 2137")
+
+                // Build so on target architecture
+                runCommand("cp ioctlHook.c bootstrap/root/ioctlHook.c", prooted = false).waitAndPrintOutput(logger)
+                runCommand("gcc -fPIC -c -o ioctlHook.o /root/ioctlHook.c").waitAndPrintOutput(logger)
+                runCommand("gcc -shared -o ioctlHook.so ioctlHook.o -ldl").waitAndPrintOutput(logger)
+                runCommand("cp ioctlHook.so /home/octoprint/ioctlHook.so").waitAndPrintOutput(logger)
+                runCommand("chown octoprint: /home/octoprint/ioctlHook.so").waitAndPrintOutput(logger)
 
                 logger.log(this) { "Bootstrap installation done" }
 
@@ -176,15 +188,18 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
         pb.environment()["HOME"] = "$FILES/bootstrap"
         pb.environment()["LANG"] = "'en_US.UTF-8'"
         pb.environment()["PWD"] = "$FILES/bootstrap"
-        pb.environment()["EXTRA_BIND"] = "-b /data/data/com.octo4a/files/serialpipe:/dev/ttyOcto4a -b /data/data/com.octo4a/files/bootstrap/ioctlHook.so:/home/octoprint/ioctlHook.so"
-        pb.environment()["PATH"] = "/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"
+        pb.environment()["EXTRA_BIND"] = "-b /data/data/com.octo4a/files/serialpipe:/dev/ttyOcto4a"
+        pb.environment()["PATH"] = "/usr/bin:/usr/sbin:/usr/local/bin:/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"
         pb.directory(File("$FILES/bootstrap"))
         var user = "root"
         if (!root) user = "octoprint"
+
         if (prooted) {
             // run inside proot
+            logger.log { "Excuting on proot as $user: $command" }
             pb.command("sh", "run-bootstrap.sh", user,  "/bin/sh", "-c", command)
         } else {
+            logger.log { "Executing: $command" }
             pb.command("sh", "-c", command)
         }
         return pb.start()
@@ -205,6 +220,8 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
         logger.log(this) { "Deleting password just in case" }
         runCommand("passwd -d octoprint").waitAndPrintOutput(logger)
         runCommand("passwd octoprint").setPassword(newPassword)
+        runCommand("passwd -d root").waitAndPrintOutput(logger)
+        runCommand("passwd root").setPassword(newPassword)
         runCommand("touch .ssh_configured", root = false)
     }
 

@@ -101,11 +101,13 @@ class OctoPrintHandlerRepositoryImpl(
             logger.log { "Bootstrap installed" }
             _serverState.emit(ServerStatus.DownloadingOctoPrint)
             bootstrapRepository.apply {
-                runCommand("apk add curl py3-pip py3-yaml py3-regex py3-netifaces py3-psutil unzip").waitAndPrintOutput(logger)
+                runCommand("DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true  " +
+                        "apt-get install --no-install-recommends  -y curl python3-pip python3-yaml python3-regex python3-netifaces python3-psutil unzip python3-setuptools python3-dev git virtualenv").waitAndPrintOutput(logger)
                 runCommand("curl -o octoprint.zip -L ${octoPrintRelease.zipballUrl}").waitAndPrintOutput(logger)
-                runCommand("unzip octoprint.zip").waitAndPrintOutput(logger)
+                runCommand("unzip -q octoprint.zip").waitAndPrintOutput(logger)
             }
             _serverState.emit(ServerStatus.InstallingDependencies)
+
             bootstrapRepository.apply {
                 runCommand("cd Octo* && pip3 install .").waitAndPrintOutput(logger)
             }
@@ -150,7 +152,7 @@ class OctoPrintHandlerRepositoryImpl(
             runCommand("mkfifo /home/octoprint/eventPipe").waitAndPrintOutput(logger)
         }
         _serverState.value = ServerStatus.BootingUp
-        octoPrintProcess = bootstrapRepository.runCommand("LD_PRELOAD=/home/octoprint/ioctlHook.so octoprint", root = false)
+        octoPrintProcess = bootstrapRepository.runCommand("LD_PRELOAD=/home/octoprint/ioctlHook.so /usr/local/bin/octoprint serve", root = false)
         Thread {
             try {
                 octoPrintProcess!!.inputStream.reader().forEachLine {
@@ -183,7 +185,7 @@ class OctoPrintHandlerRepositoryImpl(
 
     override fun stopOctoPrint() {
         wakeLock.remove()
-        bootstrapRepository.runCommand("kill `pidof octoprint`")
+        bootstrapRepository.runCommand("kill `pgrep octoprint`")
         octoPrintProcess?.destroy()
         _serverState.value = ServerStatus.Stopped
     }
