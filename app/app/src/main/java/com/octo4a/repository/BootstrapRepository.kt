@@ -56,7 +56,7 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
             }
 
             try {
-                val bootstrapReleases = githubRepository.getNewestReleases("feelfreelinux/android-linux-bootstrap")
+                val bootstrapReleases = githubRepository.getNewestReleases("codailama/android-linux-bootstrap")
                 val arch = getArchString()
 
                 val release = bootstrapReleases.firstOrNull {
