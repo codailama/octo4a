@@ -205,6 +205,8 @@ class BootstrapRepositoryImpl(private val logger: LoggerRepository, private val 
         logger.log(this) { "Deleting password just in case" }
         runCommand("passwd -d octoprint").waitAndPrintOutput(logger)
         runCommand("passwd octoprint").setPassword(newPassword)
+        runCommand("passwd -d root").waitAndPrintOutput(logger)
+        runCommand("passwd root").setPassword(newPassword)
         runCommand("touch .ssh_configured", root = false)
     }
 
